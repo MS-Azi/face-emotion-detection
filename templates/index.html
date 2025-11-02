@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Emotion Detection</title>
+</head>
+<body style="font-family: Arial; background-color: #f19cd3ff; text-align:center; padding-top:50px;">
+    <h2>Student Emotion Detection</h2>
+    <form action="/submit" method="post" enctype="multipart/form-data" style="margin:auto; width:300px; background:white; padding:20px; border-radius:10px;">
+        <label>Name:</label><br>
+        <input type="text" name="name" required><br><br>
+        <label>Email:</label><br>
+        <input type="email" name="email" required><br><br>
+        <label>Department:</label><br>
+        <input type="text" name="department" required><br><br>
+        <label>Upload your image:</label><br>
+        <input type="file" name="image" accept="image/*" required><br><br>
+        <input type="submit" value="Submit">
+    </form>
+
+    {% if emotion %}
+    <div style="margin-top:30px;">
+        <h3>Hello {{ name }}!</h3>
+        <p><strong>Detected Emotion:</strong> {{ emotion }}</p>
+        <p>{{ message }}</p>
+        <img src="{{ img_path }}" alt="Uploaded Image" width="200">
+    </div>
+    {% endif %}
+</body>
+</html>
