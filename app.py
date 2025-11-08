@@ -9,9 +9,9 @@ from werkzeug.utils import secure_filename
 import base64
 from io import BytesIO
 from PIL import Image
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'database.db')
-print("Database path:", DB_PATH)
 
 try:
     import cv2
@@ -34,6 +34,7 @@ output_details = interpreter.get_output_details()
 
 emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -49,13 +50,16 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 def preprocess_image_for_model(img_pil):
     img_gray = img_pil.convert('L').resize((48, 48))
     arr = image.img_to_array(img_gray)
     arr = np.expand_dims(arr, axis=0).astype('float32') / 255.0
     return arr
+
 
 def detect_emotion_from_pil(img_pil):
     if OPENCV_AVAILABLE:
@@ -65,7 +69,7 @@ def detect_emotion_from_pil(img_pil):
             faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
             if len(faces) > 0:
                 x, y, w, h = faces[0]
-                face_roi = cv_img[y:y+h, x:x+w]
+                face_roi = cv_img[y:y + h, x:x + w]
                 face_pil = Image.fromarray(cv2.cvtColor(face_roi, cv2.COLOR_BGR2RGB))
                 arr = preprocess_image_for_model(face_pil)
             else:
@@ -91,19 +95,25 @@ def detect_emotion_from_pil(img_pil):
     emotion = emotion_labels[int(np.argmax(output))]
     return emotion
 
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/submit', methods=['POST'])
 def submit():
-    name = request.form.get('name', '')
-    email = request.form.get('email', '')
-    department = request.form.get('department', '')
+    name = request.form.get('name', '').strip()
+    email = request.form.get('email', '').strip()
+    department = request.form.get('department', '').strip()
     file = request.files.get('image')
 
+    # 🚫 Validate form fields
+    if not name or not email or not department:
+        return jsonify({'success': False, 'error': 'Please fill in all fields before submitting.'}), 400
+
     if not file:
-        return jsonify({'success': False, 'error': 'No image uploaded'}), 400
+        return jsonify({'success': False, 'error': 'Please upload an image before submitting.'}), 400
 
     filename = secure_filename(file.filename)
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -130,8 +140,8 @@ def submit():
         'sad': "You look sad. Hope you feel better soon.",
         'surprise': "You look surprised! Something unexpected happened?"
     }
-    message = emotion_messages.get(emotion, "Emotion detected.")
 
+    message = emotion_messages.get(emotion, "Emotion detected.")
     return jsonify({
         'success': True,
         'emotion': emotion,
@@ -139,11 +149,20 @@ def submit():
         'img_path': save_path
     })
 
+
 @app.route('/webcam_upload', methods=['POST'])
 def webcam_upload():
     data = request.get_json()
     if not data or 'imageBase64' not in data:
         return jsonify({'success': False, 'error': 'No image data'}), 400
+
+    name = data.get('name', '').strip()
+    email = data.get('email', '').strip()
+    department = data.get('department', '').strip()
+
+    # 🚫 Validate required fields
+    if not name or not email or not department:
+        return jsonify({'success': False, 'error': 'Please fill in all fields before uploading.'}), 400
 
     b64 = data['imageBase64']
     if ',' in b64:
@@ -162,9 +181,6 @@ def webcam_upload():
 
     emotion = detect_emotion_from_pil(img_pil)
 
-    name = data.get('name', '')
-    email = data.get('email', '')
-    department = data.get('department', '')
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
@@ -189,6 +205,7 @@ def webcam_upload():
         'message': message,
         'img_path': save_path
     })
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

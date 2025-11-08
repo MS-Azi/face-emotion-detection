@@ -215,6 +215,7 @@
   <footer>
     Built by <a href="https://github.com/MS-Azi/face-emotion-detection" target="_blank">22CG031839 MS-Azi</a>
   </footer>
+
   <script>
     const chooseBtn = document.getElementById('chooseBtn');
     const fileInput = document.getElementById('fileInput');
@@ -228,6 +229,7 @@
     const emotionMessage = document.getElementById('emotionMessage');
     const uploadForm = document.getElementById('uploadForm');
     let stream = null;
+
     function resetUI() {
       loader.style.display = 'none';
       tick.style.display = 'none';
@@ -236,11 +238,23 @@
       emotionLabel.textContent = '';
       emotionMessage.textContent = '';
     }
+
     chooseBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', () => {
       chosenName.textContent = fileInput.files.length ? fileInput.files[0].name : 'No file chosen';
     });
+
+    // 🔹 Validate before submitting form
     uploadForm.addEventListener('submit', async (e) => {
+      const name = document.querySelector('input[name=name]').value.trim();
+      const email = document.querySelector('input[name=email]').value.trim();
+      const department = document.querySelector('input[name=department]').value.trim();
+      if (!name || !email || !department) {
+        e.preventDefault();
+        alert("Please fill in your Name, Email, and Department before submitting.");
+        return;
+      }
+
       e.preventDefault();
       resetUI();
       loader.style.display = 'inline-block';
@@ -265,11 +279,13 @@
       }
       setTimeout(resetUI, 5000);
     });
+
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const startCam = document.getElementById('startCam');
     const snapBtn = document.getElementById('snap');
     const uploadCam = document.getElementById('uploadCam');
+
     startCam.onclick = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
@@ -279,6 +295,7 @@
         statusText.textContent = 'Camera permission denied';
       }
     };
+
     snapBtn.onclick = () => {
       const w = video.videoWidth, h = video.videoHeight;
       canvas.width = w;
@@ -288,16 +305,25 @@
       resultImg.src = canvas.toDataURL('image/png');
       resultBox.style.display = 'flex';
     };
+
     uploadCam.onclick = async () => {
+      const name = document.querySelector('input[name=name]').value.trim();
+      const email = document.querySelector('input[name=email]').value.trim();
+      const department = document.querySelector('input[name=department]').value.trim();
+      if (!name || !email || !department) {
+        alert("Please fill in your Name, Email, and Department before taking or uploading a photo.");
+        return;
+      }
+
       const dataUrl = canvas.toDataURL('image/png');
       loader.style.display = 'inline-block';
       tick.style.display = 'none';
       statusText.textContent = 'Uploading...';
       const payload = {
         imageBase64: dataUrl,
-        name: document.querySelector('input[name=name]').value || '',
-        email: document.querySelector('input[name=email]').value || '',
-        department: document.querySelector('input[name=department]').value || ''
+        name,
+        email,
+        department
       };
       try {
         const res = await fetch('/webcam_upload', {
@@ -326,6 +352,7 @@
         statusText.textContent = 'Error uploading camera photo';
       }
     };
+
     const themeToggle = document.getElementById('themeToggle');
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme === 'dark') {
