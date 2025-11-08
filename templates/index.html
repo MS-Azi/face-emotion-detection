@@ -1,30 +1,432 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Emotion Detection</title>
-</head>
-<body style="font-family: Arial; background-color: #f19cd3ff; text-align:center; padding-top:50px;">
-    <h2>Student Emotion Detection</h2>
-    <form action="/submit" method="post" enctype="multipart/form-data" style="margin:auto; width:300px; background:white; padding:20px; border-radius:10px;">
-        <label>Name:</label><br>
-        <input type="text" name="name" required><br><br>
-        <label>Email:</label><br>
-        <input type="email" name="email" required><br><br>
-        <label>Department:</label><br>
-        <input type="text" name="department" required><br><br>
-        <label>Upload your image:</label><br>
-        <input type="file" name="image" accept="image/*" required><br><br>
-        <input type="submit" value="Submit">
-    </form>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Face Emotion Detector</title>
 
-    {% if emotion %}
-    <div style="margin-top:30px;">
-        <h3>Hello {{ name }}!</h3>
-        <p><strong>Detected Emotion:</strong> {{ emotion }}</p>
-        <p>{{ message }}</p>
-        <img src="{{ img_path }}" alt="Uploaded Image" width="200">
+  <style>
+    :root {
+      /* Light Theme (Baby Pink) */
+      --bg-color: linear-gradient(180deg, #ffd6e8 0%, #fff0f5 100%);
+      --card-bg: #fff;
+      --text-color: #3a2e32;
+      --accent: #b03060;
+      --btn-bg: #f8bcd0;
+      --btn-hover: #f59bb7;
+      --input-bg: #fff0f5;
+      --border-color: #f7c8d2;
+      --shadow: rgba(255, 182, 193, 0.4);
+      --subtext: #6a4a52;
+    }
+
+    body.dark {
+      /* Dark Mode (Rose-Gold Inspired) */
+      --bg-color: linear-gradient(180deg, #2a1a1f 0%, #3b1e25 100%);
+      --card-bg: #40212a;
+      --text-color: #f5e8ec;
+      --accent: #ff8fa3;
+      --btn-bg: #b03060;
+      --btn-hover: #db4a7a;
+      --input-bg: #4b2b34;
+      --border-color: #8f5564;
+      --shadow: rgba(0, 0, 0, 0.6);
+      --subtext: #e2cdd3;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      transition: background 0.3s, color 0.3s, border 0.3s;
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      flex-direction: column;
+    }
+
+    .card {
+      width: 920px;
+      max-width: 96vw;
+      background: var(--card-bg);
+      border-radius: 22px;
+      padding: 30px;
+      box-shadow: 0 15px 40px var(--shadow);
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 24px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    p.lead {
+      color: var(--subtext);
+      margin-bottom: 18px;
+    }
+
+    label {
+      font-size: 14px;
+      color: var(--subtext);
+      margin-bottom: 5px;
+      display: block;
+    }
+
+    .input {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+      background: var(--input-bg);
+      color: var(--text-color);
+      width: 100%;
+      outline: none;
+    }
+
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(255, 182, 193, 0.25);
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .file-btn, .btn {
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.25s;
+    }
+
+    .file-btn {
+      background: var(--btn-bg);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(240, 128, 128, 0.3);
+    }
+
+    .file-btn:hover {
+      background: var(--btn-hover);
+    }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn:hover {
+      background: var(--btn-hover);
+    }
+
+    .btn.secondary {
+      background: var(--btn-bg);
+      color: var(--text-color);
+    }
+
+    .btn.secondary:hover {
+      background: var(--btn-hover);
+      color: #fff;
+    }
+
+    .theme-toggle {
+      position: fixed;
+      top: 20px;
+      right: 25px;
+      background: var(--card-bg);
+      color: var(--accent);
+      border: 1px solid var(--border-color);
+      border-radius: 30px;
+      padding: 6px 12px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px var(--shadow);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .uploader-state {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .loader {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 3px solid rgba(255, 182, 193, 0.2);
+      border-top-color: var(--accent);
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .tick {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+    }
+
+    .camera-card {
+      background: var(--input-bg);
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 6px 15px var(--shadow);
+    }
+
+    video {
+      width: 100%;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid var(--border-color);
+    }
+
+    canvas { display: none; }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .result {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--input-bg);
+      border: 1px solid var(--border-color);
+      min-height: 72px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 2px solid var(--border-color);
+    }
+
+    footer {
+  margin-top: 30px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--subtext);
+}
+
+footer a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+
+    @media (max-width: 900px) {
+      .card { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <button class="theme-toggle" id="themeToggle">🌙 Dark Mode</button>
+
+  <div class="card">
+    <div class="left">
+      <h1>Face Emotion Detector</h1>
+      <p class="lead">Upload a photo or take one with your camera. The app detects your emotion instantly.</p>
+
+      <form id="uploadForm" enctype="multipart/form-data" method="post" action="/submit">
+        <div class="row">
+          <div style="flex:1">
+            <label>Name</label>
+            <input class="input" name="name" placeholder="Your name" />
+          </div>
+          <div style="width:180px">
+            <label>Department</label>
+            <input class="input" name="department" placeholder="Dept" />
+          </div>
+        </div>
+
+        <div style="margin-top:8px">
+          <label>Email</label>
+          <input class="input" name="email" placeholder="email@example.com" />
+        </div>
+
+        <div style="margin-top:12px; display:flex; align-items:center; gap:12px;">
+          <input type="file" name="image" id="fileInput" accept="image/*" style="display:none" />
+          <button type="button" class="file-btn" id="chooseBtn">Choose File</button>
+          <span id="chosenName">No file chosen</span>
+          <button type="submit" class="btn secondary">Submit</button>
+        </div>
+
+        <div class="uploader-state">
+          <div class="loader" id="loader"></div>
+          <div class="tick" id="tick">✓</div>
+          <div id="statusText">Ready</div>
+        </div>
+      </form>
+
+      <div id="result" class="result" style="display:none">
+        <img id="resultImg" class="avatar" src="" alt="preview" />
+        <div>
+          <div id="emotionLabel" style="font-weight:700;font-size:18px;"></div>
+          <div id="emotionMessage" style="font-size:14px;"></div>
+        </div>
+      </div>
     </div>
-    {% endif %}
+
+    <div class="right">
+      <div class="camera-card">
+        <label>Camera</label>
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div class="controls">
+          <button id="startCam" class="btn secondary">Enable Camera</button>
+          <button id="snap" class="btn">Take Photo</button>
+          <button id="uploadCam" class="btn">Upload Photo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+ <footer>
+  Built by <a href="https://github.com/MS-Azi/face-emotion-detection" target="_blank">22CG031839 MS-Azi</a>
+</footer>
+
+
+  <script>
+    const chooseBtn = document.getElementById('chooseBtn');
+    const fileInput = document.getElementById('fileInput');
+    const chosenName = document.getElementById('chosenName');
+    const loader = document.getElementById('loader');
+    const tick = document.getElementById('tick');
+    const statusText = document.getElementById('statusText');
+    const resultBox = document.getElementById('result');
+    const resultImg = document.getElementById('resultImg');
+    const emotionLabel = document.getElementById('emotionLabel');
+    const emotionMessage = document.getElementById('emotionMessage');
+
+    chooseBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      chosenName.textContent = fileInput.files.length ? fileInput.files[0].name : 'No file chosen';
+    });
+
+    const uploadForm = document.getElementById('uploadForm');
+    uploadForm.addEventListener('submit', () => {
+      loader.style.display = 'inline-block';
+      tick.style.display = 'none';
+      statusText.textContent = 'Uploading...';
+    });
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const startCam = document.getElementById('startCam');
+    const snapBtn = document.getElementById('snap');
+    const uploadCam = document.getElementById('uploadCam');
+    let stream = null;
+
+    startCam.onclick = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        statusText.textContent = 'Camera ready';
+      } catch (err) {
+        statusText.textContent = 'Camera permission denied';
+      }
+    };
+
+    snapBtn.onclick = () => {
+      const w = video.videoWidth, h = video.videoHeight;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, w, h);
+      resultImg.src = canvas.toDataURL('image/png');
+      resultBox.style.display = 'flex';
+    };
+
+    uploadCam.onclick = async () => {
+      const dataUrl = canvas.toDataURL('image/png');
+      loader.style.display = 'inline-block';
+      tick.style.display = 'none';
+      statusText.textContent = 'Uploading...';
+
+      const payload = {
+        imageBase64: dataUrl,
+        name: document.querySelector('input[name=name]').value || '',
+        email: document.querySelector('input[name=email]').value || '',
+        department: document.querySelector('input[name=department]').value || ''
+      };
+
+      const res = await fetch('/webcam_upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await res.json().catch(() => ({ success: false, error: 'Invalid response' }));
+      loader.style.display = 'none';
+      if (json.success) {
+        tick.style.display = 'flex';
+        statusText.textContent = 'Done';
+        emotionLabel.textContent = (json.emotion || '').toUpperCase();
+        emotionMessage.textContent = json.message || '';
+        resultBox.style.display = 'flex';
+        if (json.img_path) {
+          resultImg.src = '/' + json.img_path.replace(/\\/g, '/');
+        }
+      } else {
+        statusText.textContent = json.error || 'Upload failed';
+      }
+    };
+
+    // 🌙 Theme Toggle Logic with Memory
+    const themeToggle = document.getElementById('themeToggle');
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark');
+      themeToggle.textContent = '☀️ Light Mode';
+    }
+
+    themeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      themeToggle.textContent = isDark ? '☀️ Light Mode' : '🌙 Dark Mode';
+    });
+  </script>
 </body>
 </html>

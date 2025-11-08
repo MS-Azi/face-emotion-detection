@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from keras.preprocessing import image
 import numpy as np
 import sqlite3
@@ -6,27 +6,35 @@ import os
 from datetime import datetime
 import tensorflow as tf
 from werkzeug.utils import secure_filename
+import base64
+from io import BytesIO
+from PIL import Image
 
+
+try:
+    import cv2
+    OPENCV_AVAILABLE = True
+    CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
+except Exception:
+    OPENCV_AVAILABLE = False
+    face_cascade = None
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
-
-# Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Load the TFLite model
-interpreter = tf.lite.Interpreter(model_path="face_emotionModel_compat.tflite")
+# Load the TFLite model 
+TFLITE_MODEL_PATH = "face_emotionModel_compat.tflite"  # <- your tflite file
+interpreter = tf.lite.Interpreter(model_path=TFLITE_MODEL_PATH)
 interpreter.allocate_tensors()
-
-# Get input and output details
 input_details = interpreter.get_input_details()
 output_details = interpreter.get_output_details()
 
-# Define emotion labels (same as those used in training)
 emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
-# Create or connect to SQLite database
+# Database init
 def init_db():
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
@@ -44,63 +52,151 @@ def init_db():
 
 init_db()
 
-# Route: Home page
+def preprocess_image_for_model(img_pil):
+    """
+    Accepts a PIL.Image (RGB or L) and returns numpy array shape (1,48,48,1) scaled to [0,1].
+    """
+    
+    img_gray = img_pil.convert('L').resize((48, 48))
+    arr = image.img_to_array(img_gray)  # shape (48,48,1)
+    arr = np.expand_dims(arr, axis=0).astype('float32') / 255.0
+    return arr
+
+def detect_emotion_from_pil(img_pil):
+   
+    if OPENCV_AVAILABLE:
+        try:
+            cv_img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+            if len(faces) > 0:
+                # use the first detection
+                x, y, w, h = faces[0]
+                face_roi = cv_img[y:y+h, x:x+w]
+                face_pil = Image.fromarray(cv2.cvtColor(face_roi, cv2.COLOR_BGR2RGB))
+                arr = preprocess_image_for_model(face_pil)
+            else:
+                arr = preprocess_image_for_model(img_pil)
+        except Exception:
+            arr = preprocess_image_for_model(img_pil)
+    else:
+        arr = preprocess_image_for_model(img_pil)
+
+    # TFLite inference
+    try:
+        interpreter.set_tensor(input_details[0]['index'], arr)
+        interpreter.invoke()
+        output = interpreter.get_tensor(output_details[0]['index'])
+    except Exception as e:
+        if input_details[0]['dtype'] == np.uint8:
+            arr_q = (arr * 255).astype(np.uint8)
+            interpreter.set_tensor(input_details[0]['index'], arr_q)
+            interpreter.invoke()
+            output = interpreter.get_tensor(output_details[0]['index'])
+        else:
+            raise e
+
+    emotion = emotion_labels[int(np.argmax(output))]
+    return emotion
+
+# Home route
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Route: Handle form submission
+# Traditional form POST (file upload)
 @app.route('/submit', methods=['POST'])
 def submit():
-    name = request.form['name']
-    email = request.form['email']
-    department = request.form['department']
-    file = request.files['image']
+    name = request.form.get('name', '')
+    email = request.form.get('email', '')
+    department = request.form.get('department', '')
+    file = request.files.get('image')
 
-    if file:
-        filename = secure_filename(file.filename)
-        img_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(img_path)
+    if not file:
+        return "No image uploaded.", 400
 
-        # Preprocess the image for the model
-        img = image.load_img(img_path, target_size=(48, 48), color_mode='grayscale')
-        img_array = image.img_to_array(img)
-        img_array = np.expand_dims(img_array, axis=0)
-        img_array = img_array.astype('float32') / 255.0
+    filename = secure_filename(file.filename)
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(save_path)
 
-        # Make prediction
-        interpreter.set_tensor(input_details[0]['index'], img_array)
-        interpreter.invoke()
-        predictions = interpreter.get_tensor(output_details[0]['index'])
+    img_pil = Image.open(save_path).convert('RGB')
+    emotion = detect_emotion_from_pil(img_pil)
 
-        # Get emotion label
-        emotion = emotion_labels[np.argmax(predictions)]
+    # Save entry to DB
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
+                   (name, email, department, save_path, emotion))
+    conn.commit()
+    conn.close()
 
-        # Store user info + emotion in database
-        conn = sqlite3.connect('database.db')
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
-                       (name, email, department, img_path, emotion))
-        conn.commit()
-        conn.close()
+    emotion_messages = {
+        'angry': "You look angry. Take a deep breath!",
+        'disgust': "You seem displeased. What's bothering you?",
+        'fear': "You look scared. Don't worry, you're safe here!",
+        'happy': "You’re smiling! Glad to see you happy!",
+        'neutral': "You seem calm and composed.",
+        'sad': "You look sad. Hope you feel better soon.",
+        'surprise': "You look surprised! Something unexpected happened?"
+    }
+    message = emotion_messages.get(emotion, "Emotion detected.")
+    return render_template('index.html', name=name, emotion=emotion, message=message, img_path=save_path)
 
-        # Friendly message based on emotion
-        emotion_messages = {
-            'angry': "You look angry. Take a deep breath!",
-            'disgust': "You seem displeased. What's bothering you?",
-            'fear': "You look scared. Don't worry, you're safe here!",
-            'happy': "You’re smiling! Glad to see you happy!",
-            'neutral': "You seem calm and composed.",
-            'sad': "You look sad. Hope you feel better soon.",
-            'surprise': "You look surprised! Something unexpected happened?"
-        }
+# AJAX endpoint: upload base64 from webcam
+@app.route('/webcam_upload', methods=['POST'])
+def webcam_upload():
+    """
+    Accepts JSON: { imageBase64: "data:image/png;base64,....", name, email, department }
+    Returns JSON { success: True, emotion: "...", message: "...", img_path: "static/uploads/..." }
+    """
+    data = request.get_json()
+    if not data or 'imageBase64' not in data:
+        return jsonify({'success': False, 'error': 'No image data'}), 400
 
-        message = emotion_messages.get(emotion, "Emotion detected.")
-        return render_template('index.html', name=name, emotion=emotion, message=message, img_path=img_path)
+    b64 = data['imageBase64']
+    # Remove header if present
+    if ',' in b64:
+        b64 = b64.split(',', 1)[1]
 
-    else:
-        return "No image uploaded."
+    try:
+        img_bytes = base64.b64decode(b64)
+        img_pil = Image.open(BytesIO(img_bytes)).convert('RGB')
+    except Exception as e:
+        return jsonify({'success': False, 'error': 'Invalid image data'}), 400
 
+    # Save image file (timestamped)
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = f"webcam_{timestamp}.png"
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    img_pil.save(save_path)
+
+    # predict emotion
+    emotion = detect_emotion_from_pil(img_pil)
+
+    # Save to DB (optional fields)
+    name = data.get('name', '')
+    email = data.get('email', '')
+    department = data.get('department', '')
+    conn = sqlite3.connect('database.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
+                   (name, email, department, save_path, emotion))
+    conn.commit()
+    conn.close()
+
+    emotion_messages = {
+        'angry': "You look angry. Take a deep breath!",
+        'disgust': "You seem displeased. What's bothering you?",
+        'fear': "You look scared. Don't worry, you're safe here!",
+        'happy': "You’re smiling! Glad to see you happy!",
+        'neutral': "You seem calm and composed.",
+        'sad': "You look sad. Hope you feel better soon.",
+        'surprise': "You look surprised! Something unexpected happened?"
+    }
+    message = emotion_messages.get(emotion, "Emotion detected.")
+
+    return jsonify({'success': True, 'emotion': emotion, 'message': message, 'img_path': save_path})
 
 if __name__ == '__main__':
-    app.run()
+    # For production use a WSGI server; this is fine for development.
+    app.run(debug=True, host='0.0.0.0', port=5000)
