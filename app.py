@@ -9,6 +9,8 @@ from werkzeug.utils import secure_filename
 import base64
 from io import BytesIO
 from PIL import Image
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'database.db')
 
 try:
     import cv2
@@ -32,7 +34,7 @@ output_details = interpreter.get_output_details()
 emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
 def init_db():
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS students (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,7 +113,7 @@ def submit():
     img_pil = Image.open(save_path).convert('RGB')
     emotion = detect_emotion_from_pil(img_pil)
 
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
                    (name, email, department, save_path, emotion))
@@ -162,7 +164,7 @@ def webcam_upload():
     name = data.get('name', '')
     email = data.get('email', '')
     department = data.get('department', '')
-    conn = sqlite3.connect('database.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("INSERT INTO students (name, email, department, image_path, emotion) VALUES (?, ?, ?, ?, ?)",
                    (name, email, department, save_path, emotion))
